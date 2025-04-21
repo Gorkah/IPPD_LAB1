@@ -26,7 +26,6 @@ void cholesky_openmp(int n) {
     U = (double **)malloc(n * sizeof(double *)); 
     B = (double **)malloc(n * sizeof(double *)); 
     
-    #pragma omp parallel for private(i)
     for(i=0; i<n; i++) {
          A[i] = (double *)malloc(n * sizeof(double)); 
          L[i] = (double *)malloc(n * sizeof(double)); 
@@ -36,7 +35,6 @@ void cholesky_openmp(int n) {
     
     srand(time(NULL));
     // Generate random values for the matrix
-    #pragma omp parallel for private(i, j) 
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             A[i][j] = ((double) rand() / RAND_MAX) * 2.0 - 1.0;  // Generate values between -1 and 1
@@ -44,9 +42,8 @@ void cholesky_openmp(int n) {
     }
 
     // Make the matrix positive definite
-    #pragma omp parallel for private(i, j)
-    for (i = 0; i < n; i++) {
-        for (j = i; j < n; j++) {
+    for (int i = 0; i < n; i++) {
+        for (int j = i; j < n; j++) {
             if (i == j) {
                 A[i][j] += n;
             } else {
@@ -56,7 +53,7 @@ void cholesky_openmp(int n) {
         }
     }
 
-    #pragma omp parallel for private(i, j)
+    #pragma omp parallel for private(j)
     for(i=0; i < n; i++) {
         for(j=0; j < n; j++) {
             L[i][j] = 0.0;
@@ -73,26 +70,20 @@ void cholesky_openmp(int n) {
     start = omp_get_wtime();
     for(i=0; i<n; i++) {
         // Calculate diagonal elements
-        #pragma omp parallel
-        {
-            #pragma omp single
-            {
-                tmp = 0.0;
-                for(k=0; k<i; k++) {
-                    tmp += U[k][i]*U[k][i];
-                }
-                U[i][i] = sqrt(A[i][i]-tmp);
+        tmp = 0.0;
+        #pragma omp parallel for reduction(+:tmp) schedule(static)
+        for(k=0;k<i;k++) {
+            tmp += U[k][i]*U[k][i];
+        }
+        U[i][i] = sqrt(A[i][i]-tmp);
+        // Calculate non-diagonal elements
+        #pragma omp parallel for private(j,k,tmp) schedule(dynamic, 16)
+        for(j=i+1;j<n;j++) {
+            tmp = 0.0;
+            for(k=0;k<i;k++) {
+                tmp += U[k][i]*U[k][j];
             }
-            
-            // Calculate non-diagonal elements
-            #pragma omp for private(j, k, tmp)
-            for(j=i+1; j<n; j++) {
-                tmp = 0.0;
-                for(k=0; k<i; k++) {
-                    tmp += U[k][i]*U[k][j];
-                }
-                U[i][j] = (A[i][j]-tmp) / U[i][i];
-            }
+            U[i][j] = (A[i][j]-tmp)/U[i][i];
         }
     }
     end = omp_get_wtime();
@@ -103,10 +94,10 @@ void cholesky_openmp(int n) {
      * 3. Calculate L from U'
      */
     start = omp_get_wtime();
-    #pragma omp parallel for private(i, j)
-    for(i=0; i<n; i++) {
-        for(j=0; j<n; j++) {
-            L[j][i] = U[i][j];
+    #pragma omp parallel for private(i, j) schedule(static)
+    for(i=0;i<n;i++) {
+        for(j=0;j<=i;j++) {
+            L[i][j] = U[j][i];
         }
     }
     end = omp_get_wtime();
@@ -117,12 +108,14 @@ void cholesky_openmp(int n) {
      * 4. Compute B=LU
      */
     start = omp_get_wtime();
-    #pragma omp parallel for private(i, j, k)
-    for(i=0; i<n; i++) {
-        for(j=0; j<n; j++) {
+    #pragma omp parallel for private(i, j, k) schedule(dynamic, 8)
+    for(i=0;i<n;i++) {
+        for(j=0;j<n;j++) {
             B[i][j] = 0.0;
-            for(k=0; k<n; k++) {
-                B[i][j] += L[i][k] * U[k][j];
+            for(k=0;k<n;k++) {
+                if (i >= k && k <= j) { // Only use non-zero elements of L and U
+                    B[i][j] += L[i][k] * U[k][j];
+                }
             }
         }
     }
@@ -135,9 +128,9 @@ void cholesky_openmp(int n) {
      */
     cnt=0;
     #pragma omp parallel for private(i, j) reduction(+:cnt)
-    for(i=0; i<n; i++) {
-        for(j=0; j<n; j++) {
-            if(fabs(A[i][j] - B[i][j]) > 0.00001 * fabs(A[i][j])) {
+    for(i=0;i<n;i++) {
+        for(j=0;j<n;j++) {
+            if(fabs((B[i][j]-A[i][j])/A[i][j])*100.0 > 0.001) {
                 cnt++;
             }
         }
@@ -235,7 +228,7 @@ void cholesky(int n) {
             for(k=0;k<i;k++) {
                 tmp += U[k][i]*U[k][j];
             }
-            U[i][j] = (A[i][j]-tmp) / U[i][i];
+            U[i][j] = (A[i][j]-tmp)/U[i][i];
         }
     }
     end = omp_get_wtime();
@@ -246,9 +239,9 @@ void cholesky(int n) {
      * 3. Calculate L from U'
      */
     start = omp_get_wtime();
-    for(i=0; i<n; i++) {
-        for(j=0; j<n; j++) {
-            L[j][i] = U[i][j];
+    for(i=0;i<n;i++) {
+        for(j=0;j<=i;j++) {
+            L[i][j] = U[j][i];
         }
     }
     end = omp_get_wtime();
@@ -259,11 +252,13 @@ void cholesky(int n) {
      * 4. Compute B=LU
      */
     start = omp_get_wtime();
-    for(i=0; i<n; i++) {
-        for(j=0; j<n; j++) {
+    for(i=0;i<n;i++) {
+        for(j=0;j<n;j++) {
             B[i][j] = 0.0;
-            for(k=0; k<n; k++) {
-                B[i][j] += L[i][k] * U[k][j];
+            for(k=0;k<n;k++) {
+                if (i >= k && k <= j) { // Only use non-zero elements of L and U
+                    B[i][j] += L[i][k] * U[k][j];
+                }
             }
         }
     }
@@ -275,9 +270,9 @@ void cholesky(int n) {
      * 5. Check if all elements of A and B have a difference smaller than 0.001%
      */
     cnt=0;
-    for(i=0; i<n; i++) {
-        for(j=0; j<n; j++) {
-            if(fabs(A[i][j] - B[i][j]) > 0.00001 * fabs(A[i][j])) {
+    for(i=0;i<n;i++) {
+        for(j=0;j<n;j++) {
+            if(fabs((B[i][j]-A[i][j])/A[i][j])*100.0 > 0.001) {
                 cnt++;
             }
         }
