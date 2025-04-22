@@ -1,0 +1,17 @@
+Running with 4 threads
+Special maximum value (10000.0) inserted at index 9560466
+
+Running sequential argmax...
+Sequential time: 0.054395
+Maximum value: 10000.000000 at index 9560466
+
+Running OpenMP for argmax...
+OpenMP for time: 0.023556
+Maximum value: 10000.000000 at index 9560466
+
+Running OpenMP task argmax...
+Using K value: 1000
+OpenMP task time: 0.023993
+Maximum value: 10000.000000 at index 9560466
+
+All implementations found the same maximum. CORRECT!
