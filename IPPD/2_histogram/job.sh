@@ -10,7 +10,7 @@
 #SBATCH --nodes=1
 #SBATCH --time=00:00:30
 
-make >> make.out || exit 1      # Exit if make fails
+make >> make.out || exit 1      # Exit if make fails 
 
 ./histogram
 

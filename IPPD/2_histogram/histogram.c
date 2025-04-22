@@ -91,16 +91,13 @@ int main()
     // Assign x values to the right histogram bucket -- critical
     ////////////////////////////////////////////////////////////////
 
-    printf("\nOpenMP with critical section\n");
-
+    printf("par with critical\n");
     initHist(hist);
-
     time = omp_get_wtime();
+
     #pragma omp parallel for
-    for (int i = 0; i < num_trials; i++)
-    {
-        long ival = (long)(x[i] - xlow) / bucket_width;
-        
+    for (int i = 0; i < num_trials; i++) {
+        long ival = (long)((x[i] - xlow) / bucket_width);
         #pragma omp critical
         {
             hist[ival]++;
@@ -108,91 +105,73 @@ int main()
     }
 
     time = omp_get_wtime() - time;
-
     analyzeResults(time, hist);
 
     ////////////////////////////////////////////////////////////////
     // Assign x values to the right histogram bucket -- locks
     ////////////////////////////////////////////////////////////////
 
-    printf("\nOpenMP with locks\n");
-
+    printf("par with locks ");
     initHist(hist);
+    time = omp_get_wtime();
 
     omp_lock_t locks[num_buckets];
-    for (int i = 0; i < num_buckets; i++)
+    for (int i = 0; i < num_buckets; i++) {
         omp_init_lock(&locks[i]);
+    }
 
-    time = omp_get_wtime();
     #pragma omp parallel for
-    for (int i = 0; i < num_trials; i++)
-    {
-        long ival = (long)(x[i] - xlow) / bucket_width;
-        
+    for (int i = 0; i < num_trials; i++) {
+        long ival = (long)((x[i] - xlow) / bucket_width);
         omp_set_lock(&locks[ival]);
         hist[ival]++;
         omp_unset_lock(&locks[ival]);
     }
 
-    time = omp_get_wtime() - time;
-
-    // Destroy locks
-    for (int i = 0; i < num_buckets; i++)
+    for (int i = 0; i < num_buckets; i++) {
         omp_destroy_lock(&locks[i]);
+    }
 
+    time = omp_get_wtime() - time;
     analyzeResults(time, hist);
+
 
     ////////////////////////////////////////////////////////////////
     // Assign x values to the right histogram bucket -- reduction
     ////////////////////////////////////////////////////////////////
 
-    printf("\nOpenMP with reduction\n");
-
+    printf("par with reduction\n");
     initHist(hist);
-
     time = omp_get_wtime();
 
-    // Array to store local histograms for each thread
-    int num_threads;
-    #pragma omp parallel
-    {
-        #pragma omp single
-        num_threads = omp_get_num_threads();
-    }
-    
-    // Create local histograms for each thread
-    long local_hist[num_threads][num_buckets];
-    
-    // Initialize all local histograms to 0
-    for (int t = 0; t < num_threads; t++) {
-        for (int b = 0; b < num_buckets; b++) {
-            local_hist[t][b] = 0;
-        }
-    }
-    
-    // Compute histogram using local arrays
+    long hist_private[num_buckets * omp_get_max_threads()];
+    for (int i = 0; i < num_buckets * omp_get_max_threads(); i++)
+        hist_private[i] = 0;
+
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
-        
+        long *local_hist = &hist_private[tid * num_buckets];
+
         #pragma omp for
         for (int i = 0; i < num_trials; i++) {
-            long ival = (long)(x[i] - xlow) / bucket_width;
-            local_hist[tid][ival]++;
+            long ival = (long)((x[i] - xlow) / bucket_width);
+            local_hist[ival]++;
         }
     }
-    
-    // Combine all local histograms
-    for (int t = 0; t < num_threads; t++) {
-        for (int b = 0; b < num_buckets; b++) {
-            hist[b] += local_hist[t][b];
+
+    for (int i = 0; i < num_buckets; i++) {
+        for (int t = 0; t < omp_get_max_threads(); t++) {
+            hist[i] += hist_private[t * num_buckets + i];
         }
     }
 
     time = omp_get_wtime() - time;
-
     analyzeResults(time, hist);
 
+   
+    //////////////////////////////////////////////////////////////// 
+   
     free(x);
     return 0;
 }
