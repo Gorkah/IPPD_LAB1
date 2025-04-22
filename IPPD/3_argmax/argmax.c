@@ -3,40 +3,32 @@
 #include <omp.h>
 #include "argmax.h"
 
-// Sequential implementation of argmax
+//Implementación secuencial de argmax
 void argmax_sequential(float *array, int size, int *max_idx, float *max_val) {
     double start, end;
-    
     start = omp_get_wtime();
-    
     *max_idx = 0;
     *max_val = array[0];
-    
     for (int i = 1; i < size; i++) {
         if (array[i] > *max_val) {
             *max_val = array[i];
             *max_idx = i;
         }
     }
-    
     end = omp_get_wtime();
     printf("Sequential time: %f\n", end - start);
 }
 
-// OpenMP implementation using parallel for with reduction
+// implementación open mp usando for paralelo con reducción
 void argmax_openmp_for(float *array, int size, int *max_idx, float *max_val) {
     double start, end;
-    
     start = omp_get_wtime();
-    
     *max_idx = 0;
     *max_val = array[0];
-    
     #pragma omp parallel
     {
         int local_idx = 0;
         float local_max = array[0];
-        
         #pragma omp for
         for (int i = 1; i < size; i++) {
             if (array[i] > local_max) {
@@ -44,7 +36,6 @@ void argmax_openmp_for(float *array, int size, int *max_idx, float *max_val) {
                 local_idx = i;
             }
         }
-        
         #pragma omp critical
         {
             if (local_max > *max_val) {
@@ -53,12 +44,10 @@ void argmax_openmp_for(float *array, int size, int *max_idx, float *max_val) {
             }
         }
     }
-    
     end = omp_get_wtime();
     printf("OpenMP for time: %f\n", end - start);
 }
-
-// Recursive function to find the maximum using divide and conquer
+// Función recursiva encontrando el mayor de cada lado divide y venceras
 void find_max_recursive(float *array, int start, int end, int *max_idx, float *max_val, int level) {
     // Base case: small enough to compute directly
     if (end - start <= 1000) {
@@ -103,7 +92,7 @@ void find_max_recursive(float *array, int start, int end, int *max_idx, float *m
     }
 }
 
-// OpenMP implementation using tasks and divide-and-conquer
+//Implementación open mp usando el divide
 void argmax_openmp_task(float *array, int size, int *max_idx, float *max_val) {
     double start, end;
     
